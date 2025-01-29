@@ -1,6 +1,8 @@
 from flask import Flask, request, abort
+from linebot.v3 import (
+    WebhookHandler
+)
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.webhooks import WebhookParser
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
@@ -23,7 +25,7 @@ logger.addHandler(logHandler)
 logger.setLevel(logging.INFO)
 
 app = Flask(__name__)
-parser = WebhookParser(LINE_CHANNEL_SECRET)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
 line_handler = LineHandler()
 gemini_handler = GeminiHandler()
 
@@ -33,18 +35,13 @@ def callback():
     body = request.get_data(as_text=True)
     
     try:
-        events = parser.parse(body, signature)
-        for event in events:
-            if isinstance(event, MessageEvent):
-                if isinstance(event.message, TextMessageContent):
-                    handle_text_message(event)
-                elif isinstance(event.message, ImageMessageContent):
-                    handle_image_message(event)
+        handler.handle(body, signature)
     except InvalidSignatureError:
         logger.error("Invalid signature error")
         abort(400)
     return 'OK'
 
+@handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
     try:
         user_message = event.message.text
@@ -55,6 +52,7 @@ def handle_text_message(event):
         logger.error(f"Error handling text message: {str(e)}")
         line_handler.reply_message(event.reply_token, "抱歉,處理訊息時發生錯誤")
 
+@handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image_message(event):
     try:
         message_content = line_handler.messaging_api.get_message_content(
